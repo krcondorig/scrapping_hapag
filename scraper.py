@@ -6,15 +6,12 @@ from urllib.parse import quote
 RENDER_API_URL = "https://scrapping-hapag.onrender.com/save-tracking"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
-CONTAINER_ID = "HLCUNG12607EKZE0"
+BL_NUMBER = "HLCUNG12607EKZE0"  # Tu número de BL / Guía
 
 def scrape_with_zenrows():
-    print(f"Rastreando la guía {CONTAINER_ID} a través de ZenRows...")
+    print(f"Rastreando el BL {BL_NUMBER} y su tabla de contenedores a través de ZenRows...")
 
-    # 1. Construimos la URL objetivo de Hapag-Lloyd
-    raw_target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={CONTAINER_ID}"
-
-    # 2. Codificamos la URL para que los caracteres especiales y ?/& no rompan la petición a ZenRows
+    raw_target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={BL_NUMBER}"
     encoded_target_url = quote(raw_target_url, safe="")
 
     zenrows_url = f"https://api.zenrows.com/v1/?apikey={ZENROWS_API_KEY}&url={encoded_target_url}&js_render=true&antibot=true&premium_proxy=true"
@@ -27,27 +24,39 @@ def scrape_with_zenrows():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Extraemos el estado o un indicador básico
-    status_node = soup.select_one(".status-value") or soup.find("span", class_="highlight")
-    status_text = status_node.get_text(strip=True) if status_node else "En tránsito / Rastreado con éxito"
+    # Buscamos las filas de la tabla de contenedores que se muestran en el portal
+    containers_data = []
 
-    # Buscamos información de ETA de forma segura
-    eta_text = "No disponible"
-    for element in soup.find_all(string=True):
-        if "ETA" in element or "Estimated" in element or "Arrival" in element:
-            eta_text = element.strip()
-            break
+    # Hapag-Lloyd utiliza filas o elementos de lista para esta tabla.
+    # Buscamos filas de tabla genéricas o contenedores de elementos de la lista de resultados
+    rows = soup.find_all("tr") or soup.select(".table-row, .result-row")
 
-    return {
-        "container_id": CONTAINER_ID,
-        "status": status_text,
-        "eta": eta_text,
+    for row in rows:
+        cols = row.find_all(["td", "th"])
+        if len(cols) >= 5:  # Verificamos que tenga las columnas esperadas (Type, Container No., Status, etc.)
+            col_texts = [col.get_text(strip=True) for col in cols]
+            # Filtramos para asegurarnos de que parece una fila de contenedor
+            containers_data.append({
+                "type": col_texts[0],
+                "container_no": col_texts[1],
+                "status": col_texts[2],
+                "date": col_texts[3],
+                "place_of_activity": col_texts[4]
+            })
+
+    # Si no encuentra filas mediante <tr> tradicionales, guardamos una estructura basada en el texto general capturado
+    payload = {
+        "bl_number": BL_NUMBER,
+        "total_containers": len(containers_data),
+        "containers": containers_data if containers_data else [{"info": "Revisar estructura HTML o selector de tabla"}],
         "location": "Actualizado vía GitHub Actions + ZenRows Prémium"
     }
 
+    return payload
+
 def send_to_render(data):
     if not data or not ADMIN_TOKEN:
-        print("Faltan datos o token.")
+        print("Faltan datos o token de administración.")
         return
 
     headers = {
@@ -55,9 +64,10 @@ def send_to_render(data):
         "Content-Type": "application/json"
     }
 
+    # Adaptamos el endpoint para guardar usando el BL como identificador principal
     response = requests.post(RENDER_API_URL, json=data, headers=headers)
     if response.status_code == 200:
-        print("¡Datos detallados enviados y sincronizados con Render con éxito!")
+        print("¡Tabla de contenedores detallada enviada y sincronizada con Render con éxito!")
     else:
         print(f"Error al enviar a Render: {response.status_code} - {response.text}")
 

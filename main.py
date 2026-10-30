@@ -23,3 +23,9 @@ def get_container(container_id: str):
     if container_id in CONTAINER_DATA_CACHE:
         return CONTAINER_DATA_CACHE[container_id]
     raise HTTPException(status_code=404, detail="Contenedor no encontrado.")
+
+@app.get("/track/{bl_number}")
+def get_container(bl_number: str):
+    if bl_number in CONTAINER_DATA_CACHE:
+        return CONTAINER_DATA_CACHE[bl_number]
+    raise HTTPException(status_code=404, detail="Información de BL no encontrada.")
