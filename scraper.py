@@ -8,28 +8,36 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
 BL_NUMBER = "HLCUNG12607EKZE0"
 
-def get_zenrows_soup(target_url):
+
+class MissingZenRowsKey(Exception):
+    pass
+
+
+class ZenRowsError(Exception):
+    pass
+
+
+def get_zenrows_soup(target_url, api_key=None):
     zenrows_api = "https://api.zenrows.com/v1/"
     params = {
-        "apikey": ZENROWS_API_KEY,
+        "apikey": api_key or ZENROWS_API_KEY,
         "url": target_url,
         "js_render": "true",
         "antibot": "true",
         "premium_proxy": "true"
     }
-    response = requests.get(zenrows_api, params=params)
-    if response.status_code != 200:
-        print(f"Error en ZenRows para {target_url}: Código {response.status_code}")
-        return None
+    try:
+        response = requests.get(zenrows_api, params=params, timeout=60)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise ZenRowsError(f"ZenRows request failed: {exc}") from exc
     return BeautifulSoup(response.text, "html.parser")
 
-def scrape_container_details(container_no):
+def scrape_container_details(container_no, api_key=None):
     print(f"Extrayendo detalles para el contenedor: {container_no}...")
     query = f"view=S8510&container={quote_plus(container_no).replace('+', '++')}"
     target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?{query}"
-    soup = get_zenrows_soup(target_url)
-    if not soup:
-        return {"container_information": {}, "detailed_movements": []}
+    soup = get_zenrows_soup(target_url, api_key)
 
     container_information = {}
     for row in soup.select("table.groupBorder tr"):
@@ -58,13 +66,18 @@ def scrape_container_details(container_no):
 
     return {"container_information": container_information, "detailed_movements": movements}
 
-def scrape_with_zenrows():
-    print(f"Rastreando el BL principal: {BL_NUMBER}...")
-    target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={BL_NUMBER}"
+def scrape_bl(bl_number, zenrows_api_key=None):
+    api_key = zenrows_api_key or ZENROWS_API_KEY
+    if not api_key:
+        raise MissingZenRowsKey("ZENROWS_API_KEY is not configured in the Render service environment")
 
-    soup = get_zenrows_soup(target_url)
+    target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={quote_plus(bl_number)}"
+    soup = get_zenrows_soup(target_url, api_key)
     if not soup:
-        return None
+        raise ZenRowsError("ZenRows returned no HTML for the BL lookup")
+
+    if not soup.select_one("form.olbForm") or not soup.select_one("table.single-select"):
+        raise ZenRowsError("Hapag-Lloyd returned an unrecognized BL results page")
 
     containers_data = []
     rows = soup.select("table.single-select tbody tr") or soup.find_all("tr")
@@ -86,7 +99,7 @@ def scrape_with_zenrows():
             continue
 
         seen_containers.add(container_no)
-        details = scrape_container_details(container_no)
+        details = scrape_container_details(container_no, api_key)
         containers_data.append({
             "type": container_type,
             "container_no": container_no,
@@ -97,13 +110,18 @@ def scrape_with_zenrows():
         })
 
     payload = {
-        "bl_number": BL_NUMBER,
+        "bl_number": bl_number,
         "total_containers": len(containers_data),
         "containers": containers_data,
         "location": "Actualizado vía GitHub Actions + ZenRows Prémium"
     }
 
     return payload
+
+
+def scrape_with_zenrows():
+    return scrape_bl(BL_NUMBER)
+
 
 def send_to_render(data):
     if not data or not ADMIN_TOKEN:

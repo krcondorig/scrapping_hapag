@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Header, Request
 import os
+import scraper
 
 app = FastAPI()
 
@@ -35,9 +36,13 @@ async def save_tracking(request: Request, x_admin_token: str = Header(None)):
 
 @app.get("/track/{identifier}")
 def get_container(identifier: str):
-    if identifier in CONTAINER_DATA_CACHE:
-        return CONTAINER_DATA_CACHE[identifier]
-    raise HTTPException(
-        status_code=404,
-        detail="No hay datos recientes para este registro. Ejecute el scraper para actualizar."
-    )
+    identifier = identifier.strip()
+    if not identifier or len(identifier) > 35 or not identifier.replace("-", "").isalnum():
+        raise HTTPException(status_code=400, detail="El BL o booking number tiene un formato inválido.")
+
+    try:
+        return scraper.scrape_bl(identifier)
+    except scraper.MissingZenRowsKey as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except scraper.ZenRowsError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
