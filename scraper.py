@@ -113,7 +113,7 @@ def scrape_bl(bl_number, zenrows_api_key=None):
         "bl_number": bl_number,
         "total_containers": len(containers_data),
         "containers": containers_data,
-        "location": "Actualizado vía GitHub Actions + ZenRows Prémium"
+        "location": "Consultado en vivo vía ZenRows"
     }
 
     return payload
