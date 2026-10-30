@@ -19,10 +19,11 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests beautifulsoup4 curl-cffi
+          pip install requests beautifulsoup4
 
       - name: Ejecutar script de scraping
         env:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
           python scraper.py
