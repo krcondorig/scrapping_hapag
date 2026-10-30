@@ -1,5 +1,4 @@
 import importlib
-import os
 import unittest
 from unittest.mock import patch
 
@@ -9,15 +8,14 @@ from fastapi.testclient import TestClient
 class LiveTrackingRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.admin_token_patch = patch.dict(os.environ, {"ADMIN_TOKEN": "test-admin-token"})
-        cls.admin_token_patch.start()
         import main
         cls.main = importlib.reload(main)
         cls.client = TestClient(cls.main.app)
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.admin_token_patch.stop()
+    def test_scheduled_cache_endpoint_is_removed(self):
+        response = self.client.post("/save-tracking", json={"bl_number": "HLCUNG12607EKZE0"})
+
+        self.assertEqual(response.status_code, 404)
 
     @patch("main.scraper.scrape_bl")
     def test_route_returns_live_results_for_requested_bl_each_time(self, scrape_bl):
