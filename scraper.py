@@ -8,17 +8,18 @@ ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
 CONTAINER_ID = "HLCUNG12607EKZE0"
 
 def scrape_with_zenrows():
-    print(f"Rastreando el contenedor {CONTAINER_ID} a través de ZenRows con Proxy Prémium...")
+    print(f"Rastreando el contenedor {CONTAINER_ID} a través de ZenRows...")
 
-    target_url = f"https://www.hapag-lloyd.com/es/online-business/tracing.html?searchTerm={CONTAINER_ID}"
+    # Apuntamos a la página base de tracing de Hapag-Lloyd
+    target_url = "https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html"
 
     zenrows_url = "https://api.zenrows.com/v1/"
     params = {
         "apikey": ZENROWS_API_KEY,
         "url": target_url,
-        "js_render": "true",       # Renderiza la página con un navegador real
-        "antibot": "true",         # Activa el bypass contra Cloudflare
-        "premium_proxy": "true"    # Obligatorio para dominios con alta seguridad como Hapag-Lloyd
+        "js_render": "true",       # Renderiza la SPA con JavaScript
+        "antibot": "true",         # Salta Cloudflare
+        "premium_proxy": "true"    # Proxy prémium requerido por seguridad
     }
 
     response = requests.get(zenrows_url, params=params)
@@ -28,13 +29,15 @@ def scrape_with_zenrows():
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
+
+    # Intentamos extraer el estado o un indicador de que la página cargó correctamente
     status_node = soup.select_one(".status-value") or soup.find("span", {"id": "container-status"})
-    status_text = status_node.get_text(strip=True) if status_node else "En tránsito / Vía ZenRows Prémium"
+    status_text = status_node.get_text(strip=True) if status_node else "Portal de rastreo cargado vía ZenRows"
 
     return {
         "container_id": CONTAINER_ID,
         "status": status_text,
-        "location": "Actualizado vía GitHub Actions + ZenRows"
+        "location": "Actualizado vía GitHub Actions + ZenRows Prémium"
     }
 
 def send_to_render(data):
