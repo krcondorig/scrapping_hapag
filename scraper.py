@@ -8,10 +8,10 @@ ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
 CONTAINER_ID = "HLCUNG12607EKZE0"
 
 def scrape_with_zenrows():
-    print(f"Rastreando el contenedor {CONTAINER_ID} a través de ZenRows...")
+    print(f"Rastreando la guía {CONTAINER_ID} a través de ZenRows...")
 
-    # Apuntamos a la página base de tracing de Hapag-Lloyd
-    target_url = "https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html"
+    # URL exacta proporcionada con el parámetro blno
+    target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={CONTAINER_ID}"
 
     zenrows_url = "https://api.zenrows.com/v1/"
     params = {
@@ -30,9 +30,9 @@ def scrape_with_zenrows():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Intentamos extraer el estado o un indicador de que la página cargó correctamente
+    # Intentamos extraer el estado o un resumen de la página cargada
     status_node = soup.select_one(".status-value") or soup.find("span", {"id": "container-status"})
-    status_text = status_node.get_text(strip=True) if status_node else "Portal de rastreo cargado vía ZenRows"
+    status_text = status_node.get_text(strip=True) if status_node else "Información de rastreo obtenida vía ZenRows"
 
     return {
         "container_id": CONTAINER_ID,
