@@ -1,6 +1,7 @@
 import os
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import quote_plus
 
 RENDER_API_URL = "https://scrapping-hapag.onrender.com/save-tracking"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
@@ -22,31 +23,40 @@ def get_zenrows_soup(target_url):
         return None
     return BeautifulSoup(response.text, "html.parser")
 
-def scrape_container_movements(container_no):
-    print(f"Extrayendo movimientos para el contenedor: {container_no}...")
-    target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container={container_no}"
+def scrape_container_details(container_no):
+    print(f"Extrayendo detalles para el contenedor: {container_no}...")
+    query = f"view=S8510&container={quote_plus(container_no).replace('+', '++')}"
+    target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?{query}"
     soup = get_zenrows_soup(target_url)
     if not soup:
-        return []
+        return {"container_information": {}, "detailed_movements": []}
+
+    container_information = {}
+    for row in soup.select("table.groupBorder tr"):
+        cells = row.find_all(["td", "th"], recursive=False)
+        if len(cells) < 2:
+            continue
+        label = cells[0].get_text(" ", strip=True)
+        value = cells[1].get_text(" ", strip=True)
+        if label and value:
+            container_information[label] = value
 
     movements = []
-    rows = soup.find_all("tr")
-    for row in rows:
-        cols = row.find_all(["td", "th"])
-        if len(cols) >= 6:
-            col_texts = [col.get_text(strip=True) for col in cols]
-            joined = " ".join(col_texts)
-            if "Status" in joined or "Place of Activity" in joined or "Please enter" in joined:
-                continue
-            movements.append({
-                "status": col_texts[0],
-                "place_of_activity": col_texts[1],
-                "date": col_texts[2],
-                "time": col_texts[3],
-                "transport": col_texts[4],
-                "voyage_no": col_texts[5]
-            })
-    return movements
+    for table in soup.select("table.hl-tbl"):
+        for row in table.select("tbody tr"):
+            cols = row.find_all("td", recursive=False)
+            if len(cols) >= 6:
+                values = [col.get_text(" ", strip=True) for col in cols]
+                movements.append({
+                    "status": values[0],
+                    "place_of_activity": values[1],
+                    "date": values[2],
+                    "time": values[3],
+                    "transport": values[4],
+                    "voyage_no": values[5]
+                })
+
+    return {"container_information": container_information, "detailed_movements": movements}
 
 def scrape_with_zenrows():
     print(f"Rastreando el BL principal: {BL_NUMBER}...")
@@ -57,38 +67,34 @@ def scrape_with_zenrows():
         return None
 
     containers_data = []
-    rows = soup.find_all("tr")
+    rows = soup.select("table.single-select tbody tr") or soup.find_all("tr")
 
     seen_containers = set()
 
     for row in rows:
-        cols = row.find_all(["td", "th"])
-        if len(cols) >= 5:
-            col_texts = [col.get_text(strip=True) for col in cols]
-            joined_text = " ".join(col_texts)
+        cols = row.find_all(["td", "th"], recursive=False)
+        if len(cols) < 6:
+            continue
 
-            # Ignoramos la cabecera y textos de ayuda del formulario
-            if "Please enter" in joined_text or "Booking No." in joined_text or "Container No." in joined_text or "Type" in joined_text:
-                continue
+        # En la tabla del BL la primera celda contiene el radio de selección.
+        col_texts = [col.get_text(" ", strip=True) for col in cols]
+        if col_texts[1] == "Type" or col_texts[2] == "Container No.":
+            continue
+        container_type, container_no, status, date, place = col_texts[1:6]
+        container_no = " ".join(container_no.split())
+        if not container_no or container_no in seen_containers or len(container_no) < 6:
+            continue
 
-            # Limpiamos el número de contenedor (columna 1 típicamente)
-            container_no = " ".join(col_texts[1].split())
-
-            # Validamos que tenga un formato de contenedor válido (ej. letras y números, longitud >= 6)
-            if container_no and len(container_no) >= 6 and container_no not in seen_containers:
-                seen_containers.add(container_no)
-
-                # Obtenemos los movimientos detallados de este contenedor
-                movements = scrape_container_movements(container_no)
-
-                containers_data.append({
-                    "type": col_texts[0],
-                    "container_no": container_no,
-                    "status_summary": col_texts[2],
-                    "date_summary": col_texts[3],
-                    "place_summary": col_texts[4],
-                    "detailed_movements": movements
-                })
+        seen_containers.add(container_no)
+        details = scrape_container_details(container_no)
+        containers_data.append({
+            "type": container_type,
+            "container_no": container_no,
+            "status_summary": status,
+            "date_summary": date,
+            "place_summary": place,
+            **details
+        })
 
     payload = {
         "bl_number": BL_NUMBER,
