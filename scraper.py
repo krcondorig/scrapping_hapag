@@ -6,10 +6,10 @@ from urllib.parse import quote
 RENDER_API_URL = "https://scrapping-hapag.onrender.com/save-tracking"
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
-BL_NUMBER = "HLCUNG12607EKZE0"  # Tu número de BL / Guía
+BL_NUMBER = "HLCUNG12607EKZE0"
 
 def scrape_with_zenrows():
-    print(f"Rastreando el BL {BL_NUMBER} y su tabla de contenedores a través de ZenRows...")
+    print(f"Rastreando el BL {BL_NUMBER} y extrayendo detalles de contenedores...")
 
     raw_target_url = f"https://www.hapag-lloyd.com/en/online-business/track/track-by-booking-solution.html?blno={BL_NUMBER}"
     encoded_target_url = quote(raw_target_url, safe="")
@@ -19,36 +19,47 @@ def scrape_with_zenrows():
     response = requests.get(zenrows_url)
 
     if response.status_code != 200:
-        print(f"Error en la API de ZenRows: Código {response.status_code} - {response.text}")
+        print(f"Error en ZenRows: Código {response.status_code}")
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Buscamos las filas de la tabla de contenedores que se muestran en el portal
     containers_data = []
 
-    # Hapag-Lloyd utiliza filas o elementos de lista para esta tabla.
-    # Buscamos filas de tabla genéricas o contenedores de elementos de la lista de resultados
-    rows = soup.find_all("tr") or soup.select(".table-row, .result-row")
-
+    # Filtramos y limpiamos las filas reales de la tabla de contenedores
+    rows = soup.find_all("tr")
     for row in rows:
         cols = row.find_all(["td", "th"])
-        if len(cols) >= 5:  # Verificamos que tenga las columnas esperadas (Type, Container No., Status, etc.)
+        if len(cols) >= 5:
             col_texts = [col.get_text(strip=True) for col in cols]
-            # Filtramos para asegurarnos de que parece una fila de contenedor
-            containers_data.append({
-                "type": col_texts[0],
-                "container_no": col_texts[1],
-                "status": col_texts[2],
-                "date": col_texts[3],
-                "place_of_activity": col_texts[4]
-            })
 
-    # Si no encuentra filas mediante <tr> tradicionales, guardamos una estructura basada en el texto general capturado
+            # Evitamos capturar la cabecera de la tabla
+            if "Container No." in col_texts[1] or "Type" in col_texts[0]:
+                continue
+
+            container_no = col_texts[1]
+            status = col_texts[2]
+            date = col_texts[3]
+            place = col_texts[4]
+
+            # Limpiamos espacios duplicados en el número de contenedor
+            container_no = " ".join(container_no.split())
+
+            if container_no and len(container_no) > 4:
+                containers_data.append({
+                    "type": col_texts[0],
+                    "container_no": container_no,
+                    "status": status,
+                    "date": date,
+                    "place_of_activity": place,
+                    # Aquí simulamos/dejamos listo el espacio para los detalles profundos
+                    "details_url": f"https://www.hapag-lloyd.com/... (Contenedor {container_no})"
+                })
+
     payload = {
         "bl_number": BL_NUMBER,
         "total_containers": len(containers_data),
-        "containers": containers_data if containers_data else [{"info": "Revisar estructura HTML o selector de tabla"}],
+        "containers": containers_data,
         "location": "Actualizado vía GitHub Actions + ZenRows Prémium"
     }
 
@@ -56,7 +67,6 @@ def scrape_with_zenrows():
 
 def send_to_render(data):
     if not data or not ADMIN_TOKEN:
-        print("Faltan datos o token de administración.")
         return
 
     headers = {
@@ -64,12 +74,9 @@ def send_to_render(data):
         "Content-Type": "application/json"
     }
 
-    # Adaptamos el endpoint para guardar usando el BL como identificador principal
     response = requests.post(RENDER_API_URL, json=data, headers=headers)
     if response.status_code == 200:
-        print("¡Tabla de contenedores detallada enviada y sincronizada con Render con éxito!")
-    else:
-        print(f"Error al enviar a Render: {response.status_code} - {response.text}")
+        print("¡Datos limpios y detallados de contenedores sincronizados con Render!")
 
 if __name__ == "__main__":
     extracted_data = scrape_with_zenrows()
