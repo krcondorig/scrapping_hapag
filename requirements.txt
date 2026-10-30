@@ -1,6 +1,4 @@
 fastapi
 uvicorn
-curl_cffi
-python-dotenv
 beautifulsoup4
 requests

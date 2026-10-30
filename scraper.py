@@ -3,10 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 
-RENDER_API_URL = "https://scrapping-hapag.onrender.com/save-tracking"
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 ZENROWS_API_KEY = os.getenv("ZENROWS_API_KEY")
-BL_NUMBER = "HLCUNG12607EKZE0"
 
 
 class MissingZenRowsKey(Exception):
@@ -117,29 +114,3 @@ def scrape_bl(bl_number, zenrows_api_key=None):
     }
 
     return payload
-
-
-def scrape_with_zenrows():
-    return scrape_bl(BL_NUMBER)
-
-
-def send_to_render(data):
-    if not data or not ADMIN_TOKEN:
-        print("Faltan datos o token.")
-        exit(1)
-
-    headers = {
-        "x-admin-token": ADMIN_TOKEN,
-        "Content-Type": "application/json"
-    }
-
-    print("Enviando estructura completa a Render...")
-    response = requests.post(RENDER_API_URL, json=data, headers=headers)
-    print(f"Código de respuesta de Render: {response.status_code}")
-    response.raise_for_status()
-    print("¡Datos sincronizados con Render con éxito!")
-
-if __name__ == "__main__":
-    extracted_data = scrape_with_zenrows()
-    if extracted_data:
-        send_to_render(extracted_data)
